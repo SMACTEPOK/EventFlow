@@ -1,0 +1,45 @@
+﻿@startuml
+title EventFlow — UML State Machine: Booking Lifecycle
+[*] --> Draft
+
+Draft --> Held : seats selected / availability confirmed
+Draft --> Cancelled : customer cancels
+
+Held --> PaymentPending : checkout initiated
+Held --> Expired : reservation timeout
+Held --> Cancelled : customer cancels
+
+PaymentPending --> Confirmed : payment authorized and verified
+PaymentPending --> PaymentFailed : payment declined
+PaymentPending --> Expired : payment timeout / hold expires
+PaymentPending --> Cancelled : cancellation permitted
+
+PaymentFailed --> PaymentPending : retry payment
+PaymentFailed --> Cancelled : customer abandons
+
+Confirmed --> Cancelled : cancellation policy permits
+Confirmed --> [*] : event completed
+
+Expired --> [*]
+Cancelled --> [*]
+
+state Confirmed {
+  [*] --> TicketPending
+  TicketPending --> TicketIssued : ticket generation succeeds
+  TicketPending --> TicketError : generation fails
+  TicketError --> TicketPending : retry issuance
+  TicketIssued --> [*]
+}
+
+note right of Held
+  Seat hold is temporary.
+  Expiration must release
+  inventory atomically.
+end note
+
+note right of Confirmed
+  Confirmation requires
+  verified payment status.
+  Ticket issuance is idempotent.
+end note
+@enduml

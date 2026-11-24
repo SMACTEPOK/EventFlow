@@ -1,0 +1,51 @@
+﻿@startuml
+title EventFlow — C4 Level 2: Container Diagram
+left to right direction
+skinparam shadowing false
+skinparam packageStyle rectangle
+
+actor "Customer / Organizer /\nSupport / Administrator" as User
+
+package "EventFlow Platform" {
+  rectangle "Web Application\nReact + TypeScript\n[Container: SPA]" as Web #DDEBF7
+  rectangle "EventFlow Backend\nJava + Spring Boot\n[Container: Modular Monolith]" as Backend #B8D5F2
+  rectangle "Notification Worker\nJava + Spring Boot\n[Container: Background Worker]" as Worker #D9EAD3
+  database "PostgreSQL\n[Container: Relational Database]\nAuthoritative transactional data" as DB
+  database "Redis\n[Container: Cache / Rate Limiter]\nEphemeral data only" as Redis #FCE5CD
+  queue "RabbitMQ\n[Container: Message Broker]\nAMQP 0-9-1" as MQ #FFF2CC
+}
+
+rectangle "OIDC Identity Provider" as IdP #F4CCCC
+rectangle "External Payment Provider" as Payment #F4CCCC
+rectangle "Email Provider" as Email #F4CCCC
+
+User --> Web : Uses browser\nHTTPS
+Web --> Backend : REST API\nHTTPS / JSON
+Web --> IdP : Sign-in / token flow\nOIDC, OAuth 2.0 over HTTPS
+Backend --> IdP : Token validation / JWKS\nHTTPS / JSON
+Backend --> DB : SQL transactions\nTCP/IP, PostgreSQL protocol
+Backend --> Redis : Cache and rate limits\nTCP/IP, Redis protocol
+Backend --> MQ : Publish domain events\nAMQP 0-9-1 over TCP/IP
+MQ --> Worker : Consume notification events\nAMQP 0-9-1 over TCP/IP
+Worker --> Email : Send email notifications\nHTTPS / JSON
+Backend --> Payment : Create payment\nHTTPS / JSON
+Payment --> Backend : Payment webhook\nHTTPS / JSON
+
+note bottom of DB
+  Source of truth for:
+  users, events, seats, bookings,
+  payments and issued tickets.
+end note
+
+note bottom of Redis
+  Must not be the source of truth
+  for seat ownership or confirmed bookings.
+end note
+
+note bottom of MQ
+  Asynchronous delivery for
+  notifications and background tasks.
+  Transactional outbox can protect
+  event publication consistency.
+end note
+@enduml

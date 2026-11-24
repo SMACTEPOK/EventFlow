@@ -1,0 +1,36 @@
+﻿@startuml
+title EventFlow — C4 Level 1: System Context
+left to right direction
+skinparam shadowing false
+skinparam packageStyle rectangle
+
+actor "Customer" as Customer
+actor "Event Organizer" as Organizer
+actor "Customer Support" as Support
+actor "Platform Administrator" as Admin
+
+rectangle "EventFlow" as EventFlow #E8F1FA {
+  rectangle "Online Ticket Booking\nand Event Platform" as System #B8D5F2
+}
+
+rectangle "External Payment Provider" as Payment #FFF0D9
+rectangle "OIDC Identity Provider" as IdP #FFF0D9
+rectangle "Email / Notification Provider" as Email #FFF0D9
+
+Customer --> System : Browse events,\nselect seats, book and pay\nHTTPS/JSON
+Organizer --> System : Manage events and\n ticket inventory\nHTTPS/JSON
+Support --> System : Support and order lookup\nHTTPS/JSON
+Admin --> System : Platform administration\nHTTPS/JSON
+
+System --> Payment : Payment requests\nHTTPS/JSON
+Payment --> System : Payment callbacks\nHTTPS/JSON
+System --> IdP : Authentication flow\nOIDC / OAuth 2.0 over HTTPS
+System --> Email : Deliver notifications\nHTTPS/JSON
+
+note bottom of System
+  Scope:
+  Event catalogue, venue seating,
+  reservations, payments, ticket issuance,
+  access control and anti-scalping.
+end note
+@enduml

@@ -1,0 +1,60 @@
+﻿@startuml
+title EventFlow — Sequence 1: Seat Reservation and Payment
+autonumber
+
+actor Customer
+participant "Web Application" as Web
+participant "Booking API" as API
+participant "Authorization" as Auth
+participant "Booking Service" as Booking
+database "PostgreSQL" as DB
+participant "Payment Adapter" as Pay
+participant "Payment Provider" as Provider
+queue "RabbitMQ" as MQ
+
+Customer -> Web : Select event and seats
+Web -> API : POST /bookings (HTTPS/JSON)
+API -> Auth : Validate access token
+Auth --> API : Authentication result
+
+alt Token invalid or missing
+  API --> Web : 401 Unauthorized
+  Web --> Customer : Request sign-in
+else Token valid
+  API -> Booking : createBooking(customer, seats)
+  loop For each requested seat
+    Booking -> DB : Lock and check seat availability
+    DB --> Booking : Available / unavailable
+  end
+
+  alt All requested seats are available
+    Booking -> DB : Create HELD booking and items
+    DB --> Booking : Booking ID and expiry time
+    opt Promotion code supplied
+      Booking -> DB : Validate promotion and calculate discount
+      DB --> Booking : Discount result
+    end
+    Booking -> Pay : Create payment request
+    Pay -> Provider : Authorize payment (HTTPS/JSON)
+    Provider --> Pay : Payment result
+    alt Payment approved
+      Pay --> Booking : Verified payment success
+      Booking -> DB : Mark booking CONFIRMED; persist payment
+      Booking -> MQ : Publish BookingConfirmed (AMQP)
+      Booking --> API : Booking confirmed
+      API --> Web : 201 Created
+      Web --> Customer : Show confirmation
+    else Payment declined or timed out
+      Pay --> Booking : Payment failure / timeout
+      Booking -> DB : Mark payment failed; release or expire hold
+      Booking --> API : Payment not completed
+      API --> Web : Payment failure response
+      Web --> Customer : Show retry / choose another method
+    end
+  else At least one seat unavailable
+    Booking --> API : Seat conflict
+    API --> Web : 409 Conflict
+    Web --> Customer : Refresh seat map
+  end
+end
+@enduml

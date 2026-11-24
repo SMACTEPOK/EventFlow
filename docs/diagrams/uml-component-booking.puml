@@ -1,0 +1,58 @@
+﻿@startuml
+title EventFlow — UML Component Diagram: Booking Backend
+left to right direction
+skinparam componentStyle uml2
+skinparam shadowing false
+
+package "EventFlow Booking Backend" {
+  component "Booking REST Controller" as Controller
+  component "Booking Application Service" as AppService
+  component "Reservation Domain Service" as Reservation
+  component "Seat Inventory Adapter" as SeatAdapter
+  component "Booking Repository Adapter" as BookingRepo
+  component "Payment Integration Adapter" as PaymentAdapter
+  component "Event Publisher Adapter" as EventPublisher
+  component "Authorization Component" as Authorization
+
+  interface "IBookingUseCases\n<<provided>>" as IBooking
+  interface "ISeatAvailability\n<<required>>" as ISeat
+  interface "IBookingRepository\n<<required>>" as IRepo
+  interface "IPaymentGateway\n<<required>>" as IPayment
+  interface "IDomainEventPublisher\n<<required>>" as IEvent
+  interface "IAuthorizationPolicy\n<<required>>" as IAuth
+
+  Controller - IBooking : provided (ball)
+  Controller --> AppService : delegates
+  AppService --> Reservation : invokes
+  AppService --> Authorization : checks access
+
+  SeatAdapter - ISeat : provided adapter
+  BookingRepo - IRepo : provided adapter
+  PaymentAdapter - IPayment : provided adapter
+  EventPublisher - IEvent : provided adapter
+  Authorization - IAuth : provided adapter
+
+  Reservation ..> ISeat : required (socket)
+  Reservation ..> IRepo : required (socket)
+  AppService ..> IPayment : required (socket)
+  AppService ..> IEvent : required (socket)
+  AppService ..> IAuth : required (socket)
+}
+
+database "PostgreSQL" as DB
+component "Payment Provider API" as Payment
+queue "RabbitMQ" as MQ
+component "Identity Provider / Token Claims" as IdP
+
+BookingRepo --> DB : SQL / TCP/IP
+PaymentAdapter --> Payment : HTTPS / JSON
+EventPublisher --> MQ : AMQP 0-9-1
+Authorization --> IdP : OIDC / JWKS over HTTPS
+
+note bottom
+  Provided interfaces are services exposed by a component.
+  Required interfaces are dependencies consumed by a component.
+  The application service coordinates the use case;
+  domain rules remain inside the domain layer.
+end note
+@enduml

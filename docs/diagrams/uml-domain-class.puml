@@ -1,0 +1,103 @@
+﻿@startuml
+title EventFlow — UML Domain Class Diagram
+skinparam classAttributeIconSize 0
+hide empty members
+
+class Customer {
+  -id: UUID
+  -email: String
+  -fullName: String
+  -status: CustomerStatus
+  +register(): void
+  +updateProfile(name: String): void
+}
+
+class Event {
+  -id: UUID
+  -title: String
+  -startsAt: DateTime
+  -status: EventStatus
+  +publish(): void
+  +cancel(): void
+  +isOnSale(): Boolean
+}
+
+class Venue {
+  -id: UUID
+  -name: String
+  -address: String
+  +updateDetails(): void
+}
+
+class Seat {
+  -id: UUID
+  -rowLabel: String
+  -seatNumber: Integer
+  -category: String
+  +isAvailable(): Boolean
+  +markUnavailable(): void
+}
+
+class Booking {
+  -id: UUID
+  -createdAt: DateTime
+  -expiresAt: DateTime
+  -status: BookingStatus
+  -totalAmount: Decimal
+  +calculateTotal(): Decimal
+  +confirm(): void
+  +expire(): void
+  +cancel(): void
+}
+
+class BookingItem {
+  -id: UUID
+  -unitPrice: Decimal
+  -status: BookingItemStatus
+  +calculateSubtotal(): Decimal
+}
+
+class Payment {
+  -id: UUID
+  -providerReference: String
+  -amount: Decimal
+  -status: PaymentStatus
+  -createdAt: DateTime
+  +authorize(): Boolean
+  +markPaid(): void
+  +markFailed(reason: String): void
+}
+
+class Ticket {
+  -id: UUID
+  -ticketCode: String
+  -issuedAt: DateTime
+  -status: TicketStatus
+  +issue(): void
+  +invalidate(): void
+  +validate(): Boolean
+}
+
+Customer "1" -- "0..*" Booking : places
+Event "1" -- "0..*" Booking : receives
+Venue "1" -- "0..*" Event : hosts
+Venue "1" *-- "1..*" Seat : contains
+Booking "1" *-- "1..*" BookingItem : consists of
+BookingItem "*" --> "1" Seat : reserves
+Booking "1" --> "0..*" Payment : has
+Booking "1" *-- "0..*" Ticket : issues
+Ticket "*" --> "1" BookingItem : represents
+
+note right of Booking
+  Business invariant:
+  a seat may not have more than
+  one active confirmed reservation
+  for the same event.
+end note
+
+note bottom of BookingItem
+  Composition: Booking owns its items.
+  Items do not exist independently
+  of their booking in this domain model.
+end note
+@enduml

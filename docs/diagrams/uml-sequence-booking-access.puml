@@ -1,0 +1,51 @@
+﻿@startuml
+title EventFlow — Sequence 2: Authenticated Booking Access and Ticket Delivery
+autonumber
+
+actor Customer
+participant "Web Application" as Web
+participant "Booking API" as API
+participant "OIDC Identity Provider" as IdP
+participant "Authorization Service" as Auth
+participant "Booking Service" as Booking
+database "PostgreSQL" as DB
+queue "RabbitMQ" as MQ
+participant "Notification Worker" as Worker
+participant "Email Provider" as Email
+
+Customer -> Web : Open booking details
+Web -> API : GET /bookings/{id} (HTTPS/JSON)
+API -> Auth : Validate token and permissions
+Auth -> IdP : Retrieve signing keys / validate issuer (HTTPS)
+IdP --> Auth : OIDC metadata / JWKS
+Auth --> API : Access decision
+
+alt Authentication failed
+  API --> Web : 401 Unauthorized
+  Web --> Customer : Prompt sign-in
+else Authenticated
+  API -> Booking : getBooking(customerId, bookingId)
+  Booking -> DB : Load booking and tickets
+  DB --> Booking : Booking details
+  Booking --> API : Booking view
+
+  alt Customer owns booking
+    API --> Web : 200 OK (booking details)
+    Web --> Customer : Display booking and ticket status
+    opt Ticket is issued
+      Customer -> Web : Request ticket delivery again
+      Web -> API : POST /tickets/{id}/resend
+      API -> Booking : verify ticket ownership
+      Booking -> MQ : Publish TicketDeliveryRequested (AMQP)
+      MQ --> Worker : Consume delivery event (AMQP)
+      Worker -> Email : Send ticket link (HTTPS/JSON)
+      Email --> Worker : Delivery accepted
+      Worker --> MQ : Acknowledge message
+      API --> Web : 202 Accepted
+    end
+  else Booking belongs to another customer
+    API --> Web : 403 Forbidden
+    Web --> Customer : Access denied
+  end
+end
+@enduml
