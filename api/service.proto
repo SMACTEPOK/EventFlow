@@ -1,0 +1,110 @@
+﻿syntax = "proto3";
+
+package eventflow.inventory.v1;
+
+option java_multiple_files = true;
+option java_package = "com.eventflow.inventory.v1";
+option java_outer_classname = "InventoryApiProto";
+
+import "google/protobuf/timestamp.proto";
+
+// Internal contract between Booking and Inventory bounded contexts.
+service InventoryService {
+  rpc CheckAvailability(CheckAvailabilityRequest)
+      returns (CheckAvailabilityResponse);
+
+  rpc ReserveSeats(ReserveSeatsRequest)
+      returns (ReserveSeatsResponse);
+
+  rpc WatchReservationStatus(WatchReservationStatusRequest)
+      returns (stream ReservationStatusEvent);
+
+  // Cancels an active inventory reservation operation.
+  rpc CancelOperation(CancelOperationRequest)
+      returns (CancelOperationResponse);
+}
+
+message CheckAvailabilityRequest {
+  string event_id = 1;
+  repeated SeatReference seats = 2;
+  RequestMetadata metadata = 3;
+
+  message SeatReference {
+    string seat_id = 1;
+    string section = 2;
+  }
+}
+
+message CheckAvailabilityResponse {
+  AvailabilityStatus status = 1;
+  repeated UnavailableSeat unavailable_seats = 2;
+  google.protobuf.Timestamp checked_at = 3;
+
+  message UnavailableSeat {
+    string seat_id = 1;
+    string reason = 2;
+  }
+}
+
+message ReserveSeatsRequest {
+  string booking_id = 1;
+  string event_id = 2;
+  repeated string seat_ids = 3;
+  int64 hold_duration_seconds = 4;
+  RequestMetadata metadata = 5;
+}
+
+message ReserveSeatsResponse {
+  string reservation_id = 1;
+  ReservationStatus status = 2;
+  google.protobuf.Timestamp expires_at = 3;
+  double total_amount = 4;
+  string currency = 5;
+}
+
+message WatchReservationStatusRequest {
+  string reservation_id = 1;
+  string booking_id = 2;
+}
+
+message ReservationStatusEvent {
+  string reservation_id = 1;
+  ReservationStatus status = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+  string description = 4;
+}
+
+message CancelOperationRequest {
+  string operation_id = 1;
+  string reason = 2;
+  RequestMetadata metadata = 3;
+}
+
+message CancelOperationResponse {
+  string operation_id = 1;
+  ReservationStatus status = 2;
+  google.protobuf.Timestamp cancelled_at = 3;
+  bool cancellation_confirmed = 4;
+}
+
+message RequestMetadata {
+  string correlation_id = 1;
+  string actor_id = 2;
+  bool retry = 3;
+}
+
+enum AvailabilityStatus {
+  AVAILABILITY_STATUS_UNSPECIFIED = 0;
+  AVAILABILITY_STATUS_AVAILABLE = 1;
+  AVAILABILITY_STATUS_PARTIALLY_AVAILABLE = 2;
+  AVAILABILITY_STATUS_UNAVAILABLE = 3;
+}
+
+enum ReservationStatus {
+  RESERVATION_STATUS_UNSPECIFIED = 0;
+  RESERVATION_STATUS_HELD = 1;
+  RESERVATION_STATUS_CONFIRMED = 2;
+  RESERVATION_STATUS_RELEASED = 3;
+  RESERVATION_STATUS_EXPIRED = 4;
+  RESERVATION_STATUS_CANCELLED = 5;
+}

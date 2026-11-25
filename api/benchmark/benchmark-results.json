@@ -1,0 +1,9 @@
+{
+  "entity": "ReserveSeatsResponse",
+  "json_utf8_bytes": 148,
+  "protobuf_binary_bytes": 41,
+  "bytes_saved": 107,
+  "size_reduction_percent": 72.3,
+  "json_to_protobuf_ratio": 3.61,
+  "protobuf_decode_verified": true
+}

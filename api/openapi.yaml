@@ -1,0 +1,499 @@
+﻿openapi: 3.0.3
+info:
+  title: EventFlow Booking API
+  version: 1.0.0
+  description: >-
+    Contract-first public REST API for searching, creating, retrieving,
+    updating and cancelling event bookings in EventFlow.
+  contact:
+    name: EventFlow API Team
+    url: https://github.com/SMACTEPOK/EventFlow
+
+servers:
+  - url: http://localhost:4010
+    description: Local Prism mock server
+  - url: https://api.eventflow.example.com
+    description: Production API placeholder
+
+tags:
+  - name: Bookings
+    description: Public booking lifecycle operations
+
+security:
+  - BearerAuth: []
+
+paths:
+  /v1/bookings:
+    get:
+      tags: [Bookings]
+      operationId: listBookings
+      summary: List bookings
+      description: Returns a filtered and cursor-paginated list of bookings.
+      parameters:
+        - name: status
+          in: query
+          description: Filter bookings by lifecycle status.
+          required: false
+          schema:
+            $ref: '#/components/schemas/BookingStatus'
+        - name: eventId
+          in: query
+          description: Filter bookings by event identifier.
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          description: Maximum number of records returned.
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          example: 20
+        - name: cursor
+          in: query
+          description: Opaque cursor returned by the previous page.
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 512
+      responses:
+        '200':
+          description: Booking page returned successfully.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingListResponse'
+              example:
+                data:
+                  - bookingId: 9f2b7c1a-6d2e-4d1a-9e12-5f7a2a1b1001
+                    eventId: 7a1b2c3d-4e5f-6789-abcd-ef0123456789
+                    customerId: 2b3c4d5e-6f70-8192-a3b4-c5d6e7f80910
+                    status: CONFIRMED
+                    totalAmount: 150.00
+                    currency: EUR
+                    expiresAt: null
+                    createdAt: '2026-11-24T10:30:00Z'
+                pagination:
+                  limit: 20
+                  nextCursor: null
+                  hasMore: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [Bookings]
+      operationId: createBooking
+      summary: Create a booking
+      description: Creates a temporary booking and reserves the requested seats.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+            example:
+              eventId: 7a1b2c3d-4e5f-6789-abcd-ef0123456789
+              seatIds:
+                - 11111111-1111-4111-8111-111111111111
+                - 22222222-2222-4222-8222-222222222222
+              promoCode: EARLYBIRD
+      responses:
+        '201':
+          description: Booking created successfully.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+            Location:
+              description: URI of the newly created booking.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+              example:
+                bookingId: 9f2b7c1a-6d2e-4d1a-9e12-5f7a2a1b1001
+                eventId: 7a1b2c3d-4e5f-6789-abcd-ef0123456789
+                customerId: 2b3c4d5e-6f70-8192-a3b4-c5d6e7f80910
+                status: HELD
+                totalAmount: 150.00
+                currency: EUR
+                expiresAt: '2026-11-24T10:45:00Z'
+                createdAt: '2026-11-24T10:30:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/bookings/{bookingId}:
+    parameters:
+      - name: bookingId
+        in: path
+        required: true
+        description: Unique booking identifier.
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags: [Bookings]
+      operationId: getBooking
+      summary: Get booking by ID
+      description: Returns a booking identified by its UUID.
+      responses:
+        '200':
+          description: Booking returned successfully.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    patch:
+      tags: [Bookings]
+      operationId: updateBooking
+      summary: Update a booking
+      description: Updates mutable booking attributes while the booking is held.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBookingRequest'
+            example:
+              promoCode: STUDENT10
+      responses:
+        '200':
+          description: Booking updated successfully.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    delete:
+      tags: [Bookings]
+      operationId: cancelBooking
+      summary: Cancel a booking
+      description: Cancels a booking according to the booking lifecycle rules.
+      responses:
+        '204':
+          description: Booking cancelled successfully. No response body.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/X-Request-ID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  headers:
+    X-Request-ID:
+      description: Correlation identifier for request tracing.
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    BookingStatus:
+      type: string
+      enum:
+        - DRAFT
+        - HELD
+        - PAYMENT_PENDING
+        - CONFIRMED
+        - PAYMENT_FAILED
+        - EXPIRED
+        - CANCELLED
+      example: HELD
+
+    Booking:
+      type: object
+      additionalProperties: false
+      required:
+        - bookingId
+        - eventId
+        - customerId
+        - status
+        - totalAmount
+        - currency
+        - createdAt
+      properties:
+        bookingId:
+          type: string
+          format: uuid
+        eventId:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        totalAmount:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1000000
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          pattern: '^[A-Z]{3}$'
+          example: EUR
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      example:
+        bookingId: 9f2b7c1a-6d2e-4d1a-9e12-5f7a2a1b1001
+        eventId: 7a1b2c3d-4e5f-6789-abcd-ef0123456789
+        customerId: 2b3c4d5e-6f70-8192-a3b4-c5d6e7f80910
+        status: HELD
+        totalAmount: 150.00
+        currency: EUR
+        expiresAt: '2026-11-24T10:45:00Z'
+        createdAt: '2026-11-24T10:30:00Z'
+
+    CreateBookingRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - seatIds
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        seatIds:
+          type: array
+          minItems: 1
+          maxItems: 10
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+        promoCode:
+          type: string
+          minLength: 3
+          maxLength: 32
+          pattern: '^[A-Z0-9_-]+$'
+      example:
+        eventId: 7a1b2c3d-4e5f-6789-abcd-ef0123456789
+        seatIds:
+          - 11111111-1111-4111-8111-111111111111
+        promoCode: EARLYBIRD
+
+    UpdateBookingRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        promoCode:
+          type: string
+          minLength: 3
+          maxLength: 32
+          pattern: '^[A-Z0-9_-]+$'
+
+    BookingListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Booking'
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+
+    PaginationMetadata:
+      type: object
+      additionalProperties: false
+      required:
+        - limit
+        - hasMore
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
+      example:
+        limit: 20
+        nextCursor: eyJpZCI6IjEyMyJ9
+        hasMore: true
+
+    Problem:
+      type: object
+      description: RFC 7807 Problem Details response.
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri
+          description: URI identifying the problem type.
+        title:
+          type: string
+          description: Short human-readable summary.
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+          description: Human-readable explanation specific to this occurrence.
+        instance:
+          type: string
+          format: uri-reference
+          description: URI identifying this specific occurrence.
+        code:
+          type: string
+          description: Stable application-specific error code.
+        errors:
+          type: array
+          description: Optional field-level validation errors.
+          items:
+            $ref: '#/components/schemas/FieldValidationError'
+      example:
+        type: https://api.eventflow.example.com/problems/validation
+        title: Validation failed
+        status: 422
+        detail: One or more request fields are invalid.
+        instance: /v1/bookings
+        code: BOOKING_VALIDATION_FAILED
+        errors:
+          - field: seatIds
+            message: At least one seat is required.
+
+    FieldValidationError:
+      type: object
+      required:
+        - field
+        - message
+      properties:
+        field:
+          type: string
+        message:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Malformed request or invalid query parameter.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.eventflow.example.com/problems/bad-request
+            title: Bad Request
+            status: 400
+            detail: The request could not be parsed.
+            code: BAD_REQUEST
+
+    Unauthorized:
+      description: Authentication is missing or invalid.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.eventflow.example.com/problems/unauthorized
+            title: Unauthorized
+            status: 401
+            detail: A valid bearer token is required.
+            code: UNAUTHORIZED
+
+    NotFound:
+      description: The requested booking or event was not found.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.eventflow.example.com/problems/not-found
+            title: Not Found
+            status: 404
+            detail: The requested resource does not exist.
+            code: RESOURCE_NOT_FOUND
+
+    UnprocessableEntity:
+      description: The request is syntactically valid but violates business rules.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.eventflow.example.com/problems/booking-conflict
+            title: Booking cannot be processed
+            status: 422
+            detail: One or more requested seats are no longer available.
+            code: SEAT_UNAVAILABLE
+
+    InternalServerError:
+      description: Unexpected server-side failure.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+

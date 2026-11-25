@@ -1,0 +1,7 @@
+reservation_id: "res-2026-000001"
+status: RESERVATION_STATUS_CONFIRMED
+expires_at {
+  seconds: 1795561200
+}
+total_amount: 149.99
+currency: "EUR"
