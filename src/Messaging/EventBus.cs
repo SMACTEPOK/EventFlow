@@ -1,142 +1,159 @@
 ﻿using System.Collections.Concurrent;
-using EventFlow.Events;
 using EventFlow.Application;
+using EventFlow.Events;
 
 namespace EventFlow.Messaging;
 
+public interface IEventConsumer<in TEvent>
+    where TEvent : IIntegrationEvent
+{
+    Task HandleAsync(
+        TEvent integrationEvent,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IEventBus : IEventPublisher
 {
-    void Subscribe<TEvent>(
-        string consumerName,
-        Func<TEvent, CancellationToken, Task> handler)
+    void Subscribe<TEvent>(IEventConsumer<TEvent> consumer)
         where TEvent : IIntegrationEvent;
 
-    Task DrainAsync(CancellationToken cancellationToken = default);
+    Task DrainAsync();
+}
+
+public sealed class InMemoryEventBus : IEventBus
+{
+    private readonly ConcurrentDictionary<Type,
+        ConcurrentBag<Func<IIntegrationEvent, CancellationToken, Task>>> _handlers = new();
+
+    private readonly ConcurrentBag<Task> _pendingTasks = new();
+
+    public void Subscribe<TEvent>(IEventConsumer<TEvent> consumer)
+        where TEvent : IIntegrationEvent
+    {
+        ArgumentNullException.ThrowIfNull(consumer);
+
+        var handlers = _handlers.GetOrAdd(
+            typeof(TEvent),
+            _ => new ConcurrentBag<Func<IIntegrationEvent, CancellationToken, Task>>());
+
+        handlers.Add((integrationEvent, cancellationToken) =>
+            consumer.HandleAsync((TEvent)integrationEvent, cancellationToken));
+    }
+
+    public Task PublishAsync(
+        IIntegrationEvent integrationEvent,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(integrationEvent);
+
+        Console.WriteLine(
+            $"[PUBLISH] {integrationEvent.GetType().Name}; EventId={integrationEvent.EventId}; AggregateId={integrationEvent.AggregateId}");
+
+        if (!_handlers.TryGetValue(integrationEvent.GetType(), out var handlers))
+            return Task.CompletedTask;
+
+        // Each subscriber is dispatched independently.
+        foreach (var handler in handlers)
+        {
+            var task = Task.Run(async () =>
+            {
+                try
+                {
+                    await handler(integrationEvent, cancellationToken);
+                }
+                catch (Exception exception)
+                {
+                    // A failing consumer does not prevent other consumers from running.
+                    Console.WriteLine(
+                        $"[CONSUMER-ERROR] EventId={integrationEvent.EventId}; Error={exception.GetType().Name}: {exception.Message}");
+                }
+            }, CancellationToken.None);
+
+            _pendingTasks.Add(task);
+        }
+
+        // Dispatch is asynchronous; consumer execution is not awaited here.
+        return Task.CompletedTask;
+    }
+
+    public async Task DrainAsync()
+    {
+        while (_pendingTasks.TryTake(out var task))
+            await task;
+    }
 }
 
 public interface IProcessedEventStore
 {
-    bool TryMarkAsProcessed(string consumerName, Guid eventId);
+    bool IsProcessed(string consumerName, Guid eventId);
+    void MarkProcessed(string consumerName, Guid eventId);
 }
 
 public sealed class InMemoryProcessedEventStore : IProcessedEventStore
 {
     private readonly ConcurrentDictionary<string, byte> _processed = new();
 
-    public bool TryMarkAsProcessed(string consumerName, Guid eventId)
-    {
-        var key = $"{consumerName}:{eventId}";
-        return _processed.TryAdd(key, 0);
-    }
+    private static string Key(string consumerName, Guid eventId) =>
+        $"{consumerName}:{eventId:D}";
+
+    public bool IsProcessed(string consumerName, Guid eventId) =>
+        _processed.ContainsKey(Key(consumerName, eventId));
+
+    public void MarkProcessed(string consumerName, Guid eventId) =>
+        _processed.TryAdd(Key(consumerName, eventId), 0);
 }
 
-public sealed class InMemoryEventBus : IEventBus
-{
-    private sealed record Subscription(
-        string ConsumerName,
-        Func<IIntegrationEvent, CancellationToken, Task> Handler);
-
-    private readonly ConcurrentDictionary<Type, List<Subscription>> _subscriptions = new();
-    private readonly ConcurrentBag<Task> _pending = new();
-    private readonly object _subscriptionLock = new();
-
-    public void Subscribe<TEvent>(
-        string consumerName,
-        Func<TEvent, CancellationToken, Task> handler)
-        where TEvent : IIntegrationEvent
-    {
-        lock (_subscriptionLock)
-        {
-            var list = _subscriptions.GetOrAdd(typeof(TEvent), _ => new List<Subscription>());
-            list.Add(new Subscription(
-                consumerName,
-                (e, ct) => handler((TEvent)e, ct)));
-        }
-    }
-
-    public Task PublishAsync<TEvent>(
-        TEvent integrationEvent,
-        CancellationToken cancellationToken = default)
-        where TEvent : IIntegrationEvent
-    {
-        Console.WriteLine(
-            $"[PUBLISH] {typeof(TEvent).Name}; EventId={integrationEvent.EventId}; " +
-            $"AggregateId={integrationEvent.AggregateId}");
-
-        Subscription[] subscribers;
-        lock (_subscriptionLock)
-        {
-            subscribers = _subscriptions.TryGetValue(typeof(TEvent), out var list)
-                ? list.ToArray()
-                : Array.Empty<Subscription>();
-        }
-
-        foreach (var subscriber in subscribers)
-        {
-            var task = Task.Run(async () =>
-            {
-                try
-                {
-                    await subscriber.Handler(integrationEvent, cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(
-                        $"[CONSUMER-ERROR] {subscriber.ConsumerName}: {ex.Message}");
-                }
-            }, CancellationToken.None);
-
-            _pending.Add(task);
-        }
-
-        // Не очікуємо завершення обробників: видавець лише передає подію шині.
-        return Task.CompletedTask;
-    }
-
-    public async Task DrainAsync(CancellationToken cancellationToken = default)
-    {
-        // Метод використовується демонстрацією та тестами для очікування фонових задач.
-        while (!_pending.IsEmpty)
-        {
-            var tasks = _pending.ToArray();
-            if (tasks.Length == 0) break;
-            await Task.WhenAll(tasks).WaitAsync(cancellationToken);
-
-            while (_pending.TryTake(out _)) { }
-        }
-    }
-}
-
-public abstract class IdempotentConsumer<TEvent>
+public abstract class IdempotentConsumer<TEvent> : IEventConsumer<TEvent>
     where TEvent : IIntegrationEvent
 {
     private readonly IProcessedEventStore _store;
-    protected string ConsumerName { get; }
+
+    // A lock per consumer and event prevents concurrent duplicate execution.
+    private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks = new();
 
     protected IdempotentConsumer(
         string consumerName,
         IProcessedEventStore store)
     {
         ConsumerName = consumerName;
-        _store = store;
+        _store = store ?? throw new ArgumentNullException(nameof(store));
     }
+
+    public string ConsumerName { get; }
 
     public async Task HandleAsync(
         TEvent integrationEvent,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
-        if (!_store.TryMarkAsProcessed(ConsumerName, integrationEvent.EventId))
+        ArgumentNullException.ThrowIfNull(integrationEvent);
+
+        var eventLock = _locks.GetOrAdd(
+            integrationEvent.EventId,
+            _ => new SemaphoreSlim(1, 1));
+
+        await eventLock.WaitAsync(cancellationToken);
+
+        try
         {
+            if (_store.IsProcessed(ConsumerName, integrationEvent.EventId))
+            {
+                Console.WriteLine(
+                    $"[DUPLICATE-SKIPPED] consumer={ConsumerName}; EventId={integrationEvent.EventId}");
+                return;
+            }
+
+            // Mark only after successful processing. Failed processing can be retried.
+            await ProcessAsync(integrationEvent, cancellationToken);
+
+            _store.MarkProcessed(ConsumerName, integrationEvent.EventId);
+
             Console.WriteLine(
-                $"[DUPLICATE-SKIPPED] consumer={ConsumerName}; " +
-                $"EventId={integrationEvent.EventId}");
-            return;
+                $"[PROCESSED] consumer={ConsumerName}; EventId={integrationEvent.EventId}");
         }
-
-        await ProcessAsync(integrationEvent, cancellationToken);
-
-        Console.WriteLine(
-            $"[PROCESSED] consumer={ConsumerName}; EventId={integrationEvent.EventId}");
+        finally
+        {
+            eventLock.Release();
+        }
     }
 
     protected abstract Task ProcessAsync(
@@ -147,41 +164,45 @@ public abstract class IdempotentConsumer<TEvent>
 public sealed class BookingNotificationConsumer
     : IdempotentConsumer<BookingCreatedEvent>
 {
-    private int _notificationsSent;
-
-    public int NotificationsSent => _notificationsSent;
+    private int _processedCount;
 
     public BookingNotificationConsumer(IProcessedEventStore store)
-        : base("BookingNotificationConsumer", store) { }
+        : base(nameof(BookingNotificationConsumer), store)
+    {
+    }
 
-    protected override async Task ProcessAsync(
+    public int ProcessedCount => Volatile.Read(ref _processedCount);
+
+    protected override Task ProcessAsync(
         BookingCreatedEvent integrationEvent,
         CancellationToken cancellationToken)
     {
-        await Task.Delay(80, cancellationToken);
-        Interlocked.Increment(ref _notificationsSent);
+        Interlocked.Increment(ref _processedCount);
         Console.WriteLine(
-            $"[NOTIFICATION] Надіслано сповіщення клієнту {integrationEvent.CustomerId}");
+            $"[NOTIFICATION] Booking={integrationEvent.AggregateId}; Customer={integrationEvent.CustomerId}");
+        return Task.CompletedTask;
     }
 }
 
 public sealed class BookingAnalyticsConsumer
     : IdempotentConsumer<BookingCreatedEvent>
 {
-    private int _bookingsCounted;
-
-    public int BookingsCounted => _bookingsCounted;
+    private int _processedCount;
 
     public BookingAnalyticsConsumer(IProcessedEventStore store)
-        : base("BookingAnalyticsConsumer", store) { }
+        : base(nameof(BookingAnalyticsConsumer), store)
+    {
+    }
 
-    protected override async Task ProcessAsync(
+    public int ProcessedCount => Volatile.Read(ref _processedCount);
+
+    protected override Task ProcessAsync(
         BookingCreatedEvent integrationEvent,
         CancellationToken cancellationToken)
     {
-        await Task.Delay(120, cancellationToken);
-        Interlocked.Increment(ref _bookingsCounted);
+        Interlocked.Increment(ref _processedCount);
         Console.WriteLine(
-            $"[ANALYTICS] Бронювання {integrationEvent.AggregateId} враховано в аналітиці");
+            $"[ANALYTICS] Booking={integrationEvent.AggregateId}; Seats={integrationEvent.SeatIds.Count}");
+        return Task.CompletedTask;
     }
 }

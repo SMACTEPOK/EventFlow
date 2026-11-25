@@ -1,53 +1,45 @@
 ﻿using EventFlow.Events;
 using EventFlow.Messaging;
 
-Console.WriteLine("=== EventFlow Lab 5: Event-Driven Architecture ===");
+Console.OutputEncoding = new System.Text.UTF8Encoding(false);
 
-var store = new InMemoryProcessedEventStore();
-var bus = new InMemoryEventBus();
+var eventBus = new InMemoryEventBus();
+var processedStore = new InMemoryProcessedEventStore();
 
-var notificationConsumer = new BookingNotificationConsumer(store);
-var analyticsConsumer = new BookingAnalyticsConsumer(store);
+var notificationConsumer = new BookingNotificationConsumer(processedStore);
+var analyticsConsumer = new BookingAnalyticsConsumer(processedStore);
 
-bus.Subscribe<BookingCreatedEvent>(
-    "BookingNotificationConsumer",
-    notificationConsumer.HandleAsync);
+eventBus.Subscribe(notificationConsumer);
+eventBus.Subscribe(analyticsConsumer);
 
-bus.Subscribe<BookingCreatedEvent>(
-    "BookingAnalyticsConsumer",
-    analyticsConsumer.HandleAsync);
+var bookingId = Guid.NewGuid();
 
-var eventId = Guid.NewGuid();
-var aggregateId = Guid.NewGuid();
-var customerId = Guid.NewGuid();
-
-var bookingEvent = new BookingCreatedEvent(
-    eventId,
+var bookingCreated = new BookingCreatedEvent(
+    Guid.NewGuid(),
     DateTimeOffset.UtcNow,
-    aggregateId,
-    customerId,
+    bookingId,
+    Guid.NewGuid(),
     new[] { Guid.NewGuid(), Guid.NewGuid() });
 
-Console.WriteLine("\n--- Перша публікація ---");
-await bus.PublishAsync(bookingEvent);
+Console.WriteLine("=== EVENT-DRIVEN ARCHITECTURE DEMO ===");
 
-Console.WriteLine("[PUBLISHER] Подію передано шині. Видавець не очікує обробників.");
+await eventBus.PublishAsync(bookingCreated);
+await eventBus.DrainAsync();
 
-await bus.DrainAsync();
+Console.WriteLine("=== RE-PUBLISHING THE SAME EVENT ===");
 
-Console.WriteLine("\n--- Повторна доставка тієї самої події ---");
-await bus.PublishAsync(bookingEvent);
-await bus.DrainAsync();
+await eventBus.PublishAsync(bookingCreated);
+await eventBus.DrainAsync();
 
-Console.WriteLine("\n--- Підсумок ---");
-Console.WriteLine($"Сповіщень надіслано: {notificationConsumer.NotificationsSent}");
-Console.WriteLine($"Записів аналітики: {analyticsConsumer.BookingsCounted}");
+Console.WriteLine("=== RESULTS ===");
+Console.WriteLine($"Notification consumer count: {notificationConsumer.ProcessedCount}");
+Console.WriteLine($"Analytics consumer count: {analyticsConsumer.ProcessedCount}");
 
-if (notificationConsumer.NotificationsSent != 1 ||
-    analyticsConsumer.BookingsCounted != 1)
+if (notificationConsumer.ProcessedCount != 1 ||
+    analyticsConsumer.ProcessedCount != 1)
 {
-    throw new Exception("Помилка: повторна доставка змінила стан більше одного разу.");
+    throw new InvalidOperationException("Idempotency verification failed.");
 }
 
-Console.WriteLine("[PASS] Обидва споживачі обробили подію рівно один раз.");
-Console.WriteLine("[PASS] Повторна доставка пропущена завдяки EventId.");
+Console.WriteLine("[PASS] Both consumers processed the event exactly once.");
+Console.WriteLine("[PASS] Duplicate delivery was skipped.");

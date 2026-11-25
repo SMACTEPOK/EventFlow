@@ -17,5 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Domain\EventFlow.Domain.csproj" />
     <ProjectReference Include="..\..\src\Application\EventFlow.Application.csproj" />
+    <ProjectReference Include="..\..\src\Events\EventFlow.Events.csproj" />
+    <ProjectReference Include="..\..\src\Messaging\EventFlow.Messaging.csproj" />
   </ItemGroup>
 </Project>

@@ -4,8 +4,18 @@ namespace EventFlow.Application;
 
 public interface IEventPublisher
 {
-    Task PublishAsync<TEvent>(
-        TEvent integrationEvent,
+    Task PublishAsync(
+        IIntegrationEvent integrationEvent,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed class NullEventPublisher : IEventPublisher
+{
+    public Task PublishAsync(
+        IIntegrationEvent integrationEvent,
         CancellationToken cancellationToken = default)
-        where TEvent : IIntegrationEvent;
+    {
+        ArgumentNullException.ThrowIfNull(integrationEvent);
+        return Task.CompletedTask;
+    }
 }
