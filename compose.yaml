@@ -1,0 +1,14 @@
+﻿services:
+  eventflow-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: eventflow-api:lr6
+    container_name: eventflow-api
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_HTTP_PORTS: "8080"
+    restart: unless-stopped

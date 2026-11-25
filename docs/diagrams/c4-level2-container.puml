@@ -1,51 +1,38 @@
 ﻿@startuml
-title EventFlow — C4 Level 2: Container Diagram
+title EventFlow — C4 Level 2: Implemented Prototype Containers
 left to right direction
 skinparam shadowing false
 skinparam packageStyle rectangle
 
-actor "Customer / Organizer /\nSupport / Administrator" as User
+actor "Customer / API Client" as User
 
-package "EventFlow Platform" {
-  rectangle "Web Application\nReact + TypeScript\n[Container: SPA]" as Web #DDEBF7
-  rectangle "EventFlow Backend\nJava + Spring Boot\n[Container: Modular Monolith]" as Backend #B8D5F2
-  rectangle "Notification Worker\nJava + Spring Boot\n[Container: Background Worker]" as Worker #D9EAD3
-  database "PostgreSQL\n[Container: Relational Database]\nAuthoritative transactional data" as DB
-  database "Redis\n[Container: Cache / Rate Limiter]\nEphemeral data only" as Redis #FCE5CD
-  queue "RabbitMQ\n[Container: Message Broker]\nAMQP 0-9-1" as MQ #FFF2CC
+node "Docker Host" {
+  rectangle "eventflow-api\n[Docker Container]\n.NET 8 ASP.NET Core" as API #B8D5F2 {
+    rectangle "WebAPI\nREST Controller" as Web
+    rectangle "Application\nCreateBookingUseCase" as App
+    rectangle "Domain\nBooking model" as Domain
+    rectangle "Infrastructure\nInMemory adapters" as Infra
+    rectangle "Messaging\nInMemory EventBus" as Bus
+    rectangle "Notification Consumer" as Notify
+    rectangle "Analytics Consumer" as Analytics
+    rectangle "Events\nIntegration event contracts" as Events
+  }
 }
 
-rectangle "OIDC Identity Provider" as IdP #F4CCCC
-rectangle "External Payment Provider" as Payment #F4CCCC
-rectangle "Email Provider" as Email #F4CCCC
+User --> Web : HTTP / JSON\nTCP 8080
+Web --> App : In-process call
+App --> Domain : Domain rules
+App --> Infra : Repository / availability ports
+App --> Bus : Publish BookingCreatedEvent
+Bus --> Notify : Async dispatch
+Bus --> Analytics : Async dispatch
 
-User --> Web : Uses browser\nHTTPS
-Web --> Backend : REST API\nHTTPS / JSON
-Web --> IdP : Sign-in / token flow\nOIDC, OAuth 2.0 over HTTPS
-Backend --> IdP : Token validation / JWKS\nHTTPS / JSON
-Backend --> DB : SQL transactions\nTCP/IP, PostgreSQL protocol
-Backend --> Redis : Cache and rate limits\nTCP/IP, Redis protocol
-Backend --> MQ : Publish domain events\nAMQP 0-9-1 over TCP/IP
-MQ --> Worker : Consume notification events\nAMQP 0-9-1 over TCP/IP
-Worker --> Email : Send email notifications\nHTTPS / JSON
-Backend --> Payment : Create payment\nHTTPS / JSON
-Payment --> Backend : Payment webhook\nHTTPS / JSON
+rectangle "PostgreSQL / Redis / OIDC /\nPayment / Email" as Target #FCE5CD
+Target .. API : Planned integrations\nNot deployed in prototype
 
-note bottom of DB
-  Source of truth for:
-  users, events, seats, bookings,
-  payments and issued tickets.
-end note
-
-note bottom of Redis
-  Must not be the source of truth
-  for seat ownership or confirmed bookings.
-end note
-
-note bottom of MQ
-  Asynchronous delivery for
-  notifications and background tasks.
-  Transactional outbox can protect
-  event publication consistency.
+note bottom of API
+  Current deployment: one application container.
+  InMemory data is lost after process restart.
+  No external broker or database is connected.
 end note
 @enduml

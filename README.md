@@ -157,3 +157,13 @@ The initial deliverables focus on identifying stakeholders and concerns, definin
 
 **Project:** EventFlow  
 **Variant:** 4 — Online Ticket Booking & Event Platform
+
+## Laboratory Work 6 — Final Architecture
+
+- `Architectural_Design_Document_ADD.md` — consolidated arc42 Architecture Design Document.
+- `compose.yaml` and `Dockerfile` — single-container .NET 8 prototype deployment.
+- `docs/diagrams/deployment-eventflow.puml` — UML Deployment Diagram source.
+- `docs/adrs/0004-deployment-topology.md` — deployment topology ADR.
+- `Architecture_Presentation.pdf` — architecture defense presentation (generated separately).
+
+The current prototype uses an in-process event bus and in-memory adapters. PostgreSQL, Redis, OIDC, payment, and email integrations are target architecture elements and are not deployed by the current Compose file.

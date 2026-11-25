@@ -33,7 +33,7 @@ public sealed class BookingsController : ControllerBase
         }
         catch (DomainException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            return UnprocessableEntity(new { error = ex.Message });
         }
         catch (SeatUnavailableException ex)
         {

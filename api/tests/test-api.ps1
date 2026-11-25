@@ -8,12 +8,13 @@ $headers = @{
 
 $validBody = @{
     eventId = "7a1b2c3d-4e5f-6789-abcd-ef0123456789"
+    customerId = "2b3c4d5e-6f70-4192-a3b4-c5d6e7f80910"
     seatIds = @("11111111-1111-4111-8111-111111111111")
-    promoCode = "EARLYBIRD"
 } | ConvertTo-Json
 
 $invalidBody = @{
-    eventId = "not-a-uuid"
+    eventId = "7a1b2c3d-4e5f-6789-abcd-ef0123456789"
+    customerId = "2b3c4d5e-6f70-4192-a3b4-c5d6e7f80910"
     seatIds = @()
 } | ConvertTo-Json
 

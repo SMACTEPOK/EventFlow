@@ -1,0 +1,74 @@
+﻿@startuml
+title EventFlow — UML Deployment Diagram (Lab 6)
+left to right direction
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam maxMessageSize 100
+
+node "Client Device\n<<device>>" as client {
+  artifact "Web Browser\n<<artifact>>" as browser
+}
+
+node "Developer / Deployment Host\n<<device>>" as host {
+  node "Docker Engine\n<<executionEnvironment>>" as docker {
+    node "eventflow-api container\n<<executionEnvironment>>\n.NET 8 ASP.NET Core Runtime" as api {
+      artifact "EventFlow.WebAPI.dll\n<<artifact>>" as web
+      artifact "EventFlow.Application.dll\n<<artifact>>" as app
+      artifact "EventFlow.Domain.dll\n<<artifact>>" as domain
+      artifact "EventFlow.Infrastructure.dll\n<<artifact>>" as infra
+      artifact "EventFlow.Messaging.dll\n<<artifact>>" as messaging
+      artifact "EventFlow.Events.dll\n<<artifact>>" as events
+
+      component "BookingsController\nREST endpoint" as controller
+      component "CreateBookingUseCase" as usecase
+      component "InMemoryBookingRepository" as repo
+      component "InMemorySeatAvailabilityAdapter" as seats
+      component "InMemoryEventBus" as bus
+      component "BookingNotificationConsumer" as notification
+      component "BookingAnalyticsConsumer" as analytics
+      component "InMemoryProcessedEventStore" as processed
+    }
+  }
+}
+
+cloud "External Payment Provider\n<<external system>>\nNot connected in this prototype" as payment
+cloud "External Email Provider\n<<external system>>\nNot connected in this prototype" as email
+cloud "OIDC Identity Provider\n<<external system>>\nNot configured in this prototype" as identity
+database "PostgreSQL\n<<target component>>\nNot deployed" as postgres
+node "Redis\n<<target component>>\nNot deployed" as redis
+
+browser --> controller : HTTP / JSON\nTCP 8080 (host)\nDocker port mapping 8080:8080
+controller --> usecase : In-process method call
+usecase --> repo : IBookingRepository\nIn-process
+usecase --> seats : ISeatAvailabilityPort\nIn-process
+usecase --> bus : IEventPublisher\nIn-process
+bus --> notification : Async dispatch\nTask.Run / process memory
+bus --> analytics : Async dispatch\nTask.Run / process memory
+notification --> processed : Idempotency check\nIn-process
+analytics --> processed : Idempotency check\nIn-process
+
+payment ..> controller : Planned HTTPS / TCP 443\nNot implemented
+email ..> notification : Planned HTTPS / TCP 443\nNot implemented
+identity ..> controller : Planned OIDC / HTTPS 443\nNot implemented
+repo ..> postgres : Future persistence adapter\nNot connected
+seats ..> redis : Not used for authoritative seat state\nNot connected
+
+note bottom of api
+  One deployable application process.
+  Event bus and both consumers share process memory.
+  The repository and processed-event store are volatile.
+end note
+
+note bottom of postgres
+  ADR-0002 target architecture.
+  Not part of current Compose deployment.
+end note
+
+note bottom of redis
+  Supporting cache only in target architecture.
+  Not part of current Compose deployment.
+end note
+@enduml
