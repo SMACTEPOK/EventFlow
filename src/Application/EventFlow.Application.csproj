@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Domain\EventFlow.Domain.csproj" />
+    <ProjectReference Include="..\Events\EventFlow.Events.csproj" />
   </ItemGroup>
 </Project>
